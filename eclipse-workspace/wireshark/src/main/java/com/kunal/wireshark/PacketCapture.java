@@ -10,7 +10,9 @@ import java.io.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.pcap4j.packet.IpV4Packet;
 import org.pcap4j.packet.IpV6Packet;
@@ -30,7 +32,13 @@ public class PacketCapture {
     private int udpPacketCount = 0;
     private int totalPacketSize = 0;
     private String lastPacketDetails = "No packet captured yet";
-
+    
+    private double packetRate = 0.0;
+    private long lastPacketTimestamp = System.currentTimeMillis();
+    private final double PACKET_RATE_THRESHOLD = 50.0; // Packets per second threshold
+    private final int PACKET_THRESHOLD = 100; // Threshold for high packet count from the same IP
+    private Map<String, Integer> packetCountPerIp = new HashMap<>();
+   
     private JFrame frame;
     private JTextArea packetListView;
     private JTextField filterTextField;
@@ -110,7 +118,7 @@ public class PacketCapture {
         });
     }
 
-
+   
     private void loadNetworkInterfaces() {
         try {
             List<PcapNetworkInterface> interfaces = Pcaps.findAllDevs();
@@ -182,6 +190,7 @@ public class PacketCapture {
                         Packet packet = handle.getNextPacketEx();
                         if (packet != null) {
                             capturedPackets.add(packet);
+                            detectAnomalies(packet);
                             String packetInfo = getPacketInfo(packet);
                             if (filterTextField.getText().isEmpty() || packetInfo.contains(filterTextField.getText())) {
                                 SwingUtilities.invokeLater(() -> {
@@ -193,8 +202,9 @@ public class PacketCapture {
                                     } else if (packet.contains(UdpPacket.class)) {
                                         udpPacketCount++;  // Increment UDP packet counter
                                     }
-
+                                 
                                     updatePacketDetails();
+                                   
                                     updateStatistics();
                                 });
                             }
@@ -290,6 +300,47 @@ public class PacketCapture {
             JOptionPane.showMessageDialog(frame, "Packets replayed successfully.");
         } else {
             JOptionPane.showMessageDialog(frame, "No packets to replay.");
+        }
+    }
+    private void detectAnomalies(Packet packet) {
+    	IpV4Packet ipV4Packet = packet.get(IpV4Packet.class);
+        if (ipV4Packet != null) {
+            // Anomaly detection based on source IP address
+            String srcIP = ipV4Packet.getHeader().getSrcAddr().toString();
+            packetCountPerIp.put(srcIP, packetCountPerIp.getOrDefault(srcIP, 0) + 1);
+            
+            if (packetCountPerIp.get(srcIP) > PACKET_THRESHOLD) {
+                // If the same IP sends more than a certain threshold of packets, flag it
+                packetListView.append("Anomalous traffic detected from IP: " + srcIP + "\n");
+            }
+        }
+
+        // Anomaly detection based on packet rate (packets per second)
+        long currentTimestamp = System.currentTimeMillis();
+        double timeDifference = (currentTimestamp - lastPacketTimestamp) / 1000.0; // Time in seconds
+        packetRate = 1.0 / timeDifference; // Simple packet rate (packets per second)
+
+        if (packetRate > PACKET_RATE_THRESHOLD) {
+            // If the packet rate exceeds the threshold, flag it as anomalous
+            packetListView.append("Anomalous high packet rate detected: " + packetRate + " packets/sec\n");
+        }
+
+        lastPacketTimestamp = currentTimestamp;
+
+        // Check for unusual packet sizes
+        if (packet.length() > 1500) {
+            // Flag if packet size is unusually large (this is just an example threshold)
+            packetListView.append("Anomalous packet size detected: " + packet.length() + " bytes\n");
+        }
+
+        // Additional protocol-based anomaly checks can be added here
+        // For example: check if the packet contains unusual protocols or ports
+        if (packet.contains(TcpPacket.class)) {
+            TcpPacket tcpPacket = packet.get(TcpPacket.class);
+            int destPort = tcpPacket.getHeader().getDstPort().value();
+            if (destPort == 5155) {  // Example of a suspicious port (can be customized)
+                packetListView.append("Anomalous traffic detected on suspicious port: " + destPort + "\n");
+            }
         }
     }
 
