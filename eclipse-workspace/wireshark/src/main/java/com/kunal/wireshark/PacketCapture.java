@@ -119,6 +119,8 @@ public class PacketCapture {
     }
 
    
+    
+    
     private void loadNetworkInterfaces() {
         try {
             List<PcapNetworkInterface> interfaces = Pcaps.findAllDevs();
@@ -129,7 +131,6 @@ public class PacketCapture {
             JOptionPane.showMessageDialog(frame, "Error listing network interfaces: " + e.getMessage());
         }
     }
-
     private JPanel createButtonPanel() {
         JPanel buttonPanel = new JPanel();
 
@@ -328,7 +329,7 @@ public class PacketCapture {
         lastPacketTimestamp = currentTimestamp;
 
         // Check for unusual packet sizes
-        if (packet.length() > 1500) {
+        if (packet.length() > 15000) {
             // Flag if packet size is unusually large (this is just an example threshold)
             packetListView.append("Anomalous packet size detected: " + packet.length() + " bytes\n");
         }
